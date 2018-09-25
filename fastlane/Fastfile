@@ -1,0 +1,82 @@
+# 1,版本自增，2，拉取git提交记录作为蒲公英的上传描述，3，邮件通知测试，4，新建文件夹放导出的IPA 包
+
+default_platform(:ios)
+
+platform :ios do
+
+  before_all do
+
+    puts "在打包之前"
+
+    # git_pull
+
+    cocoapods
+
+  end
+
+  after_all do
+  puts "打包完成，并上传蒲公英成功"
+  end
+
+
+  desc "build版本自增"
+  lane :build_number do
+
+    #fastlane add_plugin versioning
+    increment_build_number_in_plist
+  end
+
+  desc "上传到蒲公英,请用 fastlane beta desc:xxx "
+  lane :beta do |option|
+
+    changelog = option[:desc]
+    # 如果没有写描述，就拉取git最好一次commit 作为描述
+    if option[:git] == "y"
+      git_add(path: ".")
+      git_commit(path: ".", message:changelog)
+      push_to_git_remote
+
+    elsif changelog.nil?
+      changelog = last_git_commit[:message]
+      puts "changelog: #{changelog}"
+      
+    else
+
+    end
+    #版本自增
+    increment_build_number_in_plist
+
+    #编译打包参数
+    # 项目名称
+    scheme_name = "FastlaneDemo"
+    # Debug 方法
+    configuration = "Debug"
+    # Info.plist的路径
+    plist_path = "./#{scheme_name}/Info.plist"
+    # version 版本号
+    version = get_info_plist_value(path: plist_path, key: "CFBundleShortVersionString")
+    # build 版本号
+    build = get_info_plist_value(path: plist_path, key: "CFBundleVersion")
+    # APP名称
+    app_name = get_info_plist_value(path: plist_path, key: "CFBundleDisplayName")
+    # IPA 的存放路径，如果项目用git 管理的，这个文件夹应该要忽略掉，
+    output_directory = "./IPA"
+    # 拼接处 ipa 包的名称，会根据当前打包时间拼接包名
+    output_name = "#{scheme_name}_#{configuration}_#{version}_#{build}_#{Time.now.strftime('%Y%m%d%H%M')}.ipa"
+    
+    #编译 
+    gym(
+      scheme: scheme_name, 
+      workspace: "#{scheme_name}.xcworkspace",
+      clean: true, 
+      export_method:'ad-hoc', 
+      configuration: configuration, 
+      output_directory: output_directory, 
+      output_name: output_name
+      )
+# 这句会编译处 dysm 文件
+    build_app(export_method: "ad-hoc")
+    #填上你在蒲公英后台的key
+    pgyer(api_key: "6421d46731915256f72bf31101210a14", user_key: "310f3b9b9e746646d853c39197ba8e43", update_description: changelog)
+  end
+end
